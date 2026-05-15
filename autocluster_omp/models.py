@@ -62,6 +62,14 @@ class BenchmarkResult:
     correctness: str
     schedule: str = "static"
     workload_name: str = "default"
+    dataset: Optional[str] = None
+    labels: Optional[str] = None
+    clusters: Optional[int] = None
+    features: Optional[int] = None
+    iterations: Optional[int] = None
+    repeat: int = 1
+    fuzziness: Optional[float] = None
+    objective: Optional[float] = None
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

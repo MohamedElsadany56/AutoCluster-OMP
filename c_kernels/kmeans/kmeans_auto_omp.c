@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #include "../shared/checksum_utils.h"
+#include "../shared/csv_loader.h"
 #include "../shared/dataset_utils.h"
 #include "../shared/timing_utils.h"
 
@@ -89,23 +90,53 @@ double checksum_labels(const int *labels, int n) {
     return checksum_int_array(labels, n);
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+    RuntimeConfig config = {NULL, N_CLUSTERS, N_FEATURES, MAX_ITER, 1, 2.0};
+    parse_common_args(argc, argv, &config, 0);
+
     int n = N_POINTS;
-    int k = N_CLUSTERS;
-    int d = N_FEATURES;
-    double *data = (double *)malloc((size_t)n * d * sizeof(double));
-    double *centroids = (double *)malloc((size_t)k * d * sizeof(double));
-    int *labels = (int *)calloc((size_t)n, sizeof(int));
-    if (!data || !centroids || !labels) {
-        fprintf(stderr, "Allocation failed\n");
+    int k = config.n_clusters;
+    int d = config.n_features;
+    double *data = NULL;
+    CsvDataset dataset = {NULL, 0, 0};
+
+    if (config.dataset_path) {
+        if (!load_csv_dataset(config.dataset_path, d, &dataset)) {
+            return 1;
+        }
+        data = repeat_points(dataset.points, dataset.n_points, dataset.n_features, config.repeat, &n);
+        free(dataset.points);
+        if (!data) {
+            return 1;
+        }
+    } else {
+        data = (double *)malloc((size_t)n * d * sizeof(double));
+        if (!data) {
+            fprintf(stderr, "Allocation failed\n");
+            return 1;
+        }
+        generate_dataset(data, n, d);
+    }
+
+    if (k > n) {
+        fprintf(stderr, "N_CLUSTERS must be less than or equal to N_POINTS\n");
+        free(data);
         return 1;
     }
 
-    generate_dataset(data, n, d);
+    double *centroids = (double *)malloc((size_t)k * d * sizeof(double));
+    int *labels = (int *)calloc((size_t)n, sizeof(int));
+    if (!centroids || !labels) {
+        fprintf(stderr, "Allocation failed\n");
+        free(data);
+        free(centroids);
+        free(labels);
+        return 1;
+    }
     initialize_centroids(data, centroids, k, d);
 
     double start = current_time_seconds();
-    for (int iter = 0; iter < MAX_ITER; iter++) {
+    for (int iter = 0; iter < config.max_iter; iter++) {
         assign_clusters(data, centroids, labels, n, k, d);
         update_centroids(data, labels, centroids, n, k, d);
     }
@@ -113,10 +144,12 @@ int main(void) {
 
     printf("RuntimeSeconds: %.9f\n", end - start);
     printf("Checksum: %.9f\n", checksum_labels(labels, n));
-    printf("N_POINTS: %d\n", N_POINTS);
-    printf("N_CLUSTERS: %d\n", N_CLUSTERS);
-    printf("N_FEATURES: %d\n", N_FEATURES);
-    printf("MAX_ITER: %d\n", MAX_ITER);
+    printf("N_POINTS: %d\n", n);
+    printf("N_CLUSTERS: %d\n", k);
+    printf("N_FEATURES: %d\n", d);
+    printf("MAX_ITER: %d\n", config.max_iter);
+    printf("DATASET: %s\n", config.dataset_path ? config.dataset_path : "synthetic");
+    printf("REPEAT: %d\n", config.repeat);
 
     free(data);
     free(centroids);

@@ -13,6 +13,14 @@ FIELDS = [
     "correctness",
     "schedule",
     "workload_name",
+    "dataset",
+    "labels",
+    "clusters",
+    "features",
+    "iterations",
+    "repeat",
+    "fuzziness",
+    "objective",
 ]
 
 

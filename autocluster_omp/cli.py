@@ -77,6 +77,14 @@ def command_benchmark(args: argparse.Namespace) -> None:
         manual=args.manual,
         threads=args.threads,
         schedule=args.schedule,
+        dataset=args.dataset,
+        labels=args.labels,
+        clusters=args.clusters,
+        features=args.features,
+        iterations=args.iterations,
+        points=args.points,
+        repeat=args.repeat,
+        fuzziness=args.fuzziness,
     )
     if args.export_csv:
         export_csv(results, args.export_csv)
@@ -154,6 +162,14 @@ def build_parser() -> argparse.ArgumentParser:
     benchmark.add_argument("--threads", nargs="+", type=int, default=[1, 2, 4, 8])
     benchmark.add_argument("--schedule", default="static")
     benchmark.add_argument("--export-csv")
+    benchmark.add_argument("--dataset")
+    benchmark.add_argument("--labels")
+    benchmark.add_argument("--clusters", type=int)
+    benchmark.add_argument("--features", type=int)
+    benchmark.add_argument("--iterations", type=int)
+    benchmark.add_argument("--points", type=int)
+    benchmark.add_argument("--fuzziness", type=float, default=2.0)
+    benchmark.add_argument("--repeat", type=int, default=1)
     benchmark.set_defaults(func=command_benchmark)
 
     experiment = subparsers.add_parser("experiment")

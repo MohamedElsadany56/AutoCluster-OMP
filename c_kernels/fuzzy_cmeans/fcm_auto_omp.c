@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #include "../shared/checksum_utils.h"
+#include "../shared/csv_loader.h"
 #include "../shared/dataset_utils.h"
 #include "../shared/timing_utils.h"
 
@@ -125,24 +126,54 @@ double checksum_membership(const double *membership, int n, int k) {
     return checksum_double_array(membership, n * k);
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+    RuntimeConfig config = {NULL, N_CLUSTERS, N_FEATURES, MAX_ITER, 1, FUZZINESS};
+    parse_common_args(argc, argv, &config, 1);
+
     int n = N_POINTS;
-    int k = N_CLUSTERS;
-    int d = N_FEATURES;
-    double m = FUZZINESS;
-    double *data = (double *)malloc((size_t)n * d * sizeof(double));
-    double *membership = (double *)malloc((size_t)n * k * sizeof(double));
-    double *centroids = (double *)calloc((size_t)k * d, sizeof(double));
-    if (!data || !membership || !centroids) {
-        fprintf(stderr, "Allocation failed\n");
+    int k = config.n_clusters;
+    int d = config.n_features;
+    double m = config.fuzziness;
+    double *data = NULL;
+    CsvDataset dataset = {NULL, 0, 0};
+
+    if (config.dataset_path) {
+        if (!load_csv_dataset(config.dataset_path, d, &dataset)) {
+            return 1;
+        }
+        data = repeat_points(dataset.points, dataset.n_points, dataset.n_features, config.repeat, &n);
+        free(dataset.points);
+        if (!data) {
+            return 1;
+        }
+    } else {
+        data = (double *)malloc((size_t)n * d * sizeof(double));
+        if (!data) {
+            fprintf(stderr, "Allocation failed\n");
+            return 1;
+        }
+        generate_dataset(data, n, d);
+    }
+
+    if (k > n) {
+        fprintf(stderr, "N_CLUSTERS must be less than or equal to N_POINTS\n");
+        free(data);
         return 1;
     }
 
-    generate_dataset(data, n, d);
+    double *membership = (double *)malloc((size_t)n * k * sizeof(double));
+    double *centroids = (double *)calloc((size_t)k * d, sizeof(double));
+    if (!membership || !centroids) {
+        fprintf(stderr, "Allocation failed\n");
+        free(data);
+        free(membership);
+        free(centroids);
+        return 1;
+    }
     initialize_membership(membership, n, k);
 
     double start = current_time_seconds();
-    for (int iter = 0; iter < MAX_ITER; iter++) {
+    for (int iter = 0; iter < config.max_iter; iter++) {
         update_centroids_fcm(data, membership, centroids, n, k, d, m);
         update_membership(data, centroids, membership, n, k, d, m);
         normalize_membership(membership, n, k);
@@ -152,11 +183,14 @@ int main(void) {
 
     printf("RuntimeSeconds: %.9f\n", end - start);
     printf("Checksum: %.9f\n", checksum_membership(membership, n, k));
-    printf("N_POINTS: %d\n", N_POINTS);
-    printf("N_CLUSTERS: %d\n", N_CLUSTERS);
-    printf("N_FEATURES: %d\n", N_FEATURES);
-    printf("MAX_ITER: %d\n", MAX_ITER);
+    printf("N_POINTS: %d\n", n);
+    printf("N_CLUSTERS: %d\n", k);
+    printf("N_FEATURES: %d\n", d);
+    printf("MAX_ITER: %d\n", config.max_iter);
+    printf("DATASET: %s\n", config.dataset_path ? config.dataset_path : "synthetic");
+    printf("REPEAT: %d\n", config.repeat);
     printf("Objective: %.9f\n", objective);
+    printf("FUZZINESS: %.9f\n", m);
 
     free(data);
     free(membership);
