@@ -1,0 +1,41 @@
+\documentclass[conference]{IEEEtran}
+\usepackage{cite}
+\usepackage{amsmath}
+\usepackage{graphicx}
+
+\title{AutoCluster-OMP: A Lightweight Source-to-Source OpenMP Auto-Parallelizer for K-Means and Fuzzy C-Means Clustering}
+
+\author{\IEEEauthorblockN{AutoCluster-OMP Contributors}
+\IEEEauthorblockA{Research Prototype}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This paper presents AutoCluster-OMP, a lightweight Python-based source-to-source tool that detects common K-Means and Fuzzy C-Means loop patterns in sequential C code and generates OpenMP-parallel C code. The prototype classifies loops by safety, warns about centroid-update races, compiles generated kernels, validates checksums, and exports reproducible benchmark reports.
+\end{abstract}
+
+\section{Introduction}
+K-Means and Fuzzy C-Means are widely used clustering algorithms whose point-wise assignment and membership updates are naturally parallel. Prior work demonstrates speedups from manual OpenMP parallelization, but less attention has been given to lightweight automatic code generation for controlled clustering kernels.
+
+\section{Related Work}
+Lloyd introduced the classic least-squares clustering formulation. Later work studied parallel K-Means on multi-core processors and large datasets. Recent fuzzy clustering work, including POFCM, shows that soft-clustering workloads can also benefit from parallel execution.
+
+\section{Research Gaps}
+The main gaps are automatic OpenMP generation, unified support for hard and soft clustering patterns, explicit loop-safety classification, workload-aware decisions, and reproducible tool-generated reports.
+
+\section{Proposed AutoCluster-OMP Framework}
+AutoCluster-OMP scans sequential C source, detects for-loops, classifies loop patterns, checks simple dependency rules, inserts OpenMP pragmas for safe loops, and reports unsafe shared updates.
+
+\section{Implementation}
+The prototype is implemented in Python 3.10 using argparse, pandas, matplotlib, pytest, and rich. C kernels generate synthetic datasets internally and print runtime, checksum, and workload metadata.
+
+\section{Evaluation Plan}
+The evaluation compares sequential, manually parallelized, and automatically generated OpenMP kernels across small, medium, and large workloads. Metrics include runtime, speedup, efficiency, checksum correctness, and schedule sensitivity.
+
+\section{Conclusion and Future Work}
+AutoCluster-OMP demonstrates that a simple pattern-based source-to-source workflow can automate useful OpenMP transformations for clustering kernels. Future work includes Clang AST integration, stronger dependence analysis, safe local-buffer centroid transformations, and GPU backends.
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+\end{document}

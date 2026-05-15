@@ -1,0 +1,14 @@
+{
+  "name": "schedule_comparison",
+  "n_points": 1000000,
+  "n_clusters": 8,
+  "n_features": 8,
+  "iterations": 30,
+  "threads": [1, 2, 4, 8],
+  "schedules": [
+    {"name": "static"},
+    {"name": "dynamic", "chunk_size": 64},
+    {"name": "guided", "chunk_size": 64},
+    {"name": "auto"}
+  ]
+}
