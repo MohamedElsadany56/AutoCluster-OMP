@@ -1,0 +1,9 @@
+key,value
+created_at,2026-05-15T22:48:05
+mode,smoke
+threads,"1,2"
+iterations,2
+repeats,1
+cluster_values,dataset defaults
+schedules,"static,dynamic_64"
+datasets,paper_2d_100000

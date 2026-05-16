@@ -90,7 +90,7 @@ double checksum_labels(const int *labels, int n) {
 }
 
 int main(int argc, char **argv) {
-    RuntimeConfig config = {NULL, N_CLUSTERS, N_FEATURES, MAX_ITER, 1, 2.0};
+    RuntimeConfig config = {NULL, NULL, N_CLUSTERS, N_FEATURES, MAX_ITER, 1, 2.0};
     parse_common_args(argc, argv, &config, 0);
 
     int n = N_POINTS;
@@ -149,6 +149,13 @@ int main(int argc, char **argv) {
     printf("MAX_ITER: %d\n", config.max_iter);
     printf("DATASET: %s\n", config.dataset_path ? config.dataset_path : "synthetic");
     printf("REPEAT: %d\n", config.repeat);
+
+    if (config.output_labels_path && !write_int_labels_csv(config.output_labels_path, labels, n)) {
+        free(data);
+        free(centroids);
+        free(labels);
+        return 1;
+    }
 
     free(data);
     free(centroids);

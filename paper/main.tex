@@ -1,41 +1,450 @@
-\documentclass[conference]{IEEEtran}
+\documentclass[conference,10pt]{IEEEtran}
+
+\IEEEoverridecommandlockouts
+
 \usepackage{cite}
-\usepackage{amsmath}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
 \usepackage{graphicx}
+\usepackage{url}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{tabularx}
+
+\lstset{
+    basicstyle=\ttfamily\scriptsize,
+    breaklines=true,
+    frame=single,
+    columns=fullflexible,
+    keepspaces=true,
+    showstringspaces=false,
+    keywordstyle=\color{blue},
+    commentstyle=\color{gray},
+    aboveskip=4pt,
+    belowskip=10pt,
+    framesep=5pt,
+    xleftmargin=2pt,
+    xrightmargin=2pt,
+    framerule=0.4pt
+}
 
 \title{AutoCluster-OMP: A Lightweight Source-to-Source OpenMP Auto-Parallelizer for K-Means and Fuzzy C-Means Clustering}
 
-\author{\IEEEauthorblockN{AutoCluster-OMP Contributors}
-\IEEEauthorblockA{Research Prototype}}
+\author{
+\IEEEauthorblockN{
+Mohamed Yasser Goma,
+Abdullah Ismail,
+Mohamed Khaled,
+Mohamed Saleh,
+Ahmed Sayed
+}
+\IEEEauthorblockA{
+School of Information Technology and Computer Science\\
+Nile University, Egypt\\
+\{M.yasser2223, A.yasser2208, M.Khaled2241, M.Mahmoud2219, A.sayed2125\}@nu.edu.eg
+}
+\thanks{Course instructor: Dr. Khaled Elsayed Mostafa, Nile University, Egypt. Email: KMostafa@nu.edu.eg.}
+}
 
 \begin{document}
+
 \maketitle
 
 \begin{abstract}
-This paper presents AutoCluster-OMP, a lightweight Python-based source-to-source tool that detects common K-Means and Fuzzy C-Means loop patterns in sequential C code and generates OpenMP-parallel C code. The prototype classifies loops by safety, warns about centroid-update races, compiles generated kernels, validates checksums, and exports reproducible benchmark reports.
+Clustering algorithms such as K-Means and Fuzzy C-Means are widely used in data science and machine learning, but their repeated distance computations become expensive as the number of points, clusters, features, and iterations increases. Manual OpenMP parallelization can reduce runtime, but it requires the programmer to identify independent loops, avoid race conditions, select suitable schedules, and validate correctness. This paper presents AutoCluster-OMP, a lightweight source-to-source automatic parallelization prototype for clustering workloads. The tool analyzes sequential C implementations of K-Means and Fuzzy C-Means, detects clustering-specific loop patterns, classifies safe and unsafe loops, generates OpenMP directives, compiles sequential/manual/auto-generated versions, and evaluates performance using runtime, speedup, efficiency, and checksum-based correctness validation. The prototype targets the K-Means assignment loop and the Fuzzy C-Means membership-update loop, while warning about shared centroid-update patterns that may introduce races. Experimental results show that auto-generated OpenMP code achieves meaningful speedup while preserving correctness. On the Covertype K-Means workload, AutoCluster-OMP achieved a 4.37$\times$ speedup at 8 threads. For Fuzzy C-Means, the auto-generated version achieved up to 5.12$\times$ speedup in the schedule and hyperparameter sweep.
 \end{abstract}
 
+\begin{IEEEkeywords}
+Automatic parallelization, OpenMP, K-Means, Fuzzy C-Means, source-to-source transformation, clustering, parallel computing.
+\end{IEEEkeywords}
+
 \section{Introduction}
-K-Means and Fuzzy C-Means are widely used clustering algorithms whose point-wise assignment and membership updates are naturally parallel. Prior work demonstrates speedups from manual OpenMP parallelization, but less attention has been given to lightweight automatic code generation for controlled clustering kernels.
+
+Modern processors provide multiple cores, but sequential machine learning and data mining programs often fail to utilize this hardware efficiently. Clustering algorithms are a clear example. K-Means and Fuzzy C-Means repeatedly compute distances between data points and cluster centers, and their runtime grows with the number of points, clusters, features, and iterations.
+
+K-Means is a hard clustering algorithm, where each point is assigned to exactly one cluster. Fuzzy C-Means is a soft clustering algorithm, where each point has a membership degree for every cluster. Although the algorithms differ in their assignment semantics, both contain dominant data-parallel loops. In K-Means, the point-assignment loop can process different points independently. In Fuzzy C-Means, the membership-update loop can update membership rows independently.
+
+OpenMP is a practical shared-memory programming model for multicore CPUs. However, inserting OpenMP directives manually requires experience. Some loops are safe to parallelize, while other loops, such as centroid-update loops, may contain shared writes and can introduce race conditions. Therefore, an automatic parallelization tool should not simply add OpenMP directives blindly. It should detect loop patterns, classify safety, and generate code only when the transformation is valid.
+
+This project proposes AutoCluster-OMP, a lightweight source-to-source automatic parallelization prototype. The tool reads sequential C clustering code, detects supported loop patterns, generates OpenMP directives, compiles the generated code, benchmarks it against sequential and manual OpenMP baselines, and validates correctness using checksums.
+
+The main contributions of this work are:
+\begin{itemize}
+    \item A lightweight source-to-source automatic parallelization prototype for clustering workloads.
+    \item Automatic detection of K-Means assignment loops and Fuzzy C-Means membership-update loops.
+    \item Loop-safety classification that distinguishes independent loops from unsafe centroid-update loops.
+    \item OpenMP code generation with configurable scheduling policies.
+    \item Experimental evaluation using runtime, speedup, efficiency, schedule comparison, and checksum-based correctness validation.
+\end{itemize}
 
 \section{Related Work}
-Lloyd introduced the classic least-squares clustering formulation. Later work studied parallel K-Means on multi-core processors and large datasets. Recent fuzzy clustering work, including POFCM, shows that soft-clustering workloads can also benefit from parallel execution.
 
-\section{Research Gaps}
-The main gaps are automatic OpenMP generation, unified support for hard and soft clustering patterns, explicit loop-safety classification, workload-aware decisions, and reproducible tool-generated reports.
+\subsection{Parallel K-Means}
 
-\section{Proposed AutoCluster-OMP Framework}
-AutoCluster-OMP scans sequential C source, detects for-loops, classifies loop patterns, checks simple dependency rules, inserts OpenMP pragmas for safe loops, and reports unsafe shared updates.
+The parallelization of K-Means clustering is a central problem in high-performance data mining, focusing on partitioning the workload between distance calculations and centroid updates. While the assignment phase is embarrassingly parallel, the centroid update phase remains a primary bottleneck due to write contention caused by irregular scatter-style aggregations \cite{parallel_customer_segmentation_2025}. Recent innovations, such as Flash-KMeans, introduce contention-free implementations using sort-inverse updates to transform high-contention atomic scatters into high-throughput reductions on modern GPUs \cite{yang2026flashkmeans}. However, achieving these gains on shared-memory architectures typically requires manual pragma insertion or the use of thread-local buffers, as automated tools often fail to manage these memory dependencies \cite{parallel_customer_segmentation_2025,yang2026flashkmeans}.
+
+The gap is that current research predominantly focuses on manual parallelization strategies that require significant programmer intervention to manage data dependencies and synchronization issues in centroid updates.
+
+\subsection{Parallel Fuzzy C-Means}
+
+Parallel Fuzzy C-Means introduces significantly higher computational complexity than hard clustering because each point has a membership value for each cluster. For large-scale data, research has turned to distributed frameworks such as Apache Spark, using distributed data abstractions to handle membership matrix updates across clusters \cite{spark_fuzzy_cmedian_2024}. Hybrid approaches such as FCMCAA utilize the Hadoop MapReduce framework to balance big data anonymization with parallel execution speed \cite{lawrance2024fcmcaa}. Despite these advancements for cloud-based environments, non-expert developers lack lightweight automation for local multicore systems, where the overhead of distributed clusters may outweigh the benefit of parallelization.
+
+The gap is that there is a lack of accessible, lightweight automation tools that can recognize specific fuzzy clustering patterns on local shared-memory architectures without resorting to heavyweight distributed frameworks.
+
+\subsection{Automatic Parallelization}
+
+Automatic parallelization aims to transform sequential code into parallel code without human intervention. The Cetus Compiler v2.0 serves as a source-to-source infrastructure using compiler analysis and transformation techniques to insert OpenMP directives \cite{bhosale2022cetus}. To improve optimization coverage, recent research such as the Parallel-Semantics Program Dependence Graph utilizes advanced compiler foundations to capture parallel program dependencies that traditional models may miss \cite{homerding2024pspdg}. Furthermore, recent systems such as LLMA4OpenMP use large language models to assist automatic OpenMP parallelization \cite{zhu2025llma4openmp}. While these tools advance the field, they may not provide domain-specific and explainable diagnostic feedback regarding why certain irregular clustering loops are unsafe for transformation.
+
+The gap is that general-purpose automatic parallelization tools often operate as broad compiler frameworks or black-box systems. They do not directly target clustering-specific patterns or provide simple diagnostic explanations for assignment loops, membership-update loops, centroid-update hazards, and workload-aware OpenMP insertion.
+
+\section{Proposed Solution}
+
+\subsection{System Overview}
+
+AutoCluster-OMP is designed as a lightweight source-to-source transformation pipeline. The input is a sequential C implementation of a supported clustering algorithm. The output is a generated C file containing OpenMP directives for safe loops.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.95\linewidth]{figures/pipeline.png}
+\caption{AutoCluster-OMP source-to-source automatic parallelization pipeline.}
+\label{fig:pipeline}
+\end{figure}
+
+The pipeline performs the following steps: read sequential C clustering code, detect C \texttt{for} loops, classify loop patterns using clustering-specific rules, check safety and workload size, insert OpenMP directives before safe loops, compile sequential/manual/auto-generated versions, benchmark performance, and validate correctness using checksums.
+
+\subsection{Supported Patterns}
+
+For K-Means, the target loop writes one cluster label per point:
+
+\vspace{6pt}
+\noindent\centering{\scriptsize\textbf{Listing 1. K-Means target assignment loop.}}\par
+\vspace{4pt}
+\begin{lstlisting}[language=C]
+for (int i = 0; i < n; i++) {
+    ...
+    labels[i] = best_cluster;
+}
+\end{lstlisting}
+
+The generated loop is:
+
+\vspace{6pt}
+\noindent\centering{\scriptsize\textbf{Listing 2. Generated OpenMP K-Means assignment loop.}}\par
+\vspace{4pt}
+\begin{lstlisting}[language=C]
+#pragma omp parallel for schedule(static)
+for (int i = 0; i < n; i++) {
+    ...
+    labels[i] = best_cluster;
+}
+\end{lstlisting}
+
+This transformation is safe because each iteration writes to a unique \texttt{labels[i]} location, and centroids are read-only during the assignment phase.
+
+For Fuzzy C-Means, the target loop updates membership values:
+
+\vspace{6pt}
+\noindent\centering{\scriptsize\textbf{Listing 3. Fuzzy C-Means target membership-update loop.}}\par
+\vspace{4pt}
+\begin{lstlisting}[language=C]
+for (int i = 0; i < n; i++) {
+    for (int c = 0; c < k; c++) {
+        ...
+        membership[i * k + c] = value;
+    }
+}
+\end{lstlisting}
+
+The outer loop is safe to parallelize because each point owns a distinct row in the membership matrix.
+
+\subsection{Loop Classification}
+
+AutoCluster-OMP classifies detected loops into five categories. Table~\ref{tab:classification} summarizes the classification rules.
+
+\begin{table}[t]
+\centering
+\caption{Loop Classification and Parallelization Decision}
+\label{tab:classification}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabularx}{\columnwidth}{p{0.35\columnwidth}p{0.17\columnwidth}X}
+\toprule
+\textbf{Classification} & \textbf{Decision} & \textbf{Reason}\\
+\midrule
+\texttt{kmeans\_assignment\_loop} 
+& Parallelize 
+& Independent writes to \texttt{labels[i]}.\\
+
+\texttt{fuzzy\_membership\_loop} 
+& Parallelize 
+& Independent membership-row updates.\\
+
+\texttt{centroid\_shared\_write} 
+& Warn 
+& Possible shared writes to centroid accumulators.\\
+
+\texttt{possible\_reduction\_loop} 
+& Warn 
+& Requires reduction or thread-local buffers.\\
+
+\texttt{unknown\_loop} 
+& Skip 
+& Unsupported pattern.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Centroid-update loops require special handling because multiple threads may update the same cluster accumulator:
+
+\vspace{6pt}
+\noindent\centering{\scriptsize\textbf{Listing 4. Unsafe shared centroid update pattern.}}\par
+\vspace{4pt}
+\begin{lstlisting}[language=C]
+centroid_counts[cluster]++;
+centroid_sums[cluster * d + f] += points[i * d + f];
+\end{lstlisting}
+
+Therefore, the prototype does not blindly parallelize these loops. It either warns about the race-condition risk or relies on manual/thread-local buffer versions for comparison.
+
+\subsection{Workload-Aware Decision}
+
+Small workloads may not benefit from OpenMP due to thread creation and scheduling overhead. Therefore, AutoCluster-OMP estimates computational work before parallelization. For K-Means, the estimated work is:
+
+\begin{equation}
+W_{KM} = N \times K \times D \times I,
+\end{equation}
+
+where $N$ is the number of points, $K$ is the number of clusters, $D$ is the number of features, and $I$ is the number of iterations. For Fuzzy C-Means, the membership-update step performs additional cluster-to-cluster comparisons, so the estimated work is approximated as:
+
+\begin{equation}
+W_{FCM} = N \times K^2 \times D \times I.
+\end{equation}
 
 \section{Implementation}
-The prototype is implemented in Python 3.10 using argparse, pandas, matplotlib, pytest, and rich. C kernels generate synthetic datasets internally and print runtime, checksum, and workload metadata.
 
-\section{Evaluation Plan}
-The evaluation compares sequential, manually parallelized, and automatically generated OpenMP kernels across small, medium, and large workloads. Metrics include runtime, speedup, efficiency, checksum correctness, and schedule sensitivity.
+The prototype uses Python for analysis, transformation, benchmarking, and reporting, and C for the clustering kernels. The main package modules are shown in Table~\ref{tab:modules}.
+
+\begin{table}[t]
+\centering
+\caption{AutoCluster-OMP Implementation Modules}
+\label{tab:modules}
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\columnwidth}{p{0.27\columnwidth}X}
+\toprule
+\textbf{Module} & \textbf{Purpose}\\
+\midrule
+\texttt{analyzer} & Detects and classifies C loops.\\
+\texttt{generator} & Inserts OpenMP pragmas.\\
+\texttt{compiler} & Builds GCC commands and compiles C files.\\
+\texttt{benchmark} & Runs experiments and calculates metrics.\\
+\texttt{reports} & Exports CSV, JSON, and Markdown reports.\\
+\texttt{plotting} & Generates runtime, speedup, and efficiency figures.\\
+\texttt{c\_kernels} & Contains K-Means and FCM C implementations.\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Each algorithm has three versions:
+\begin{itemize}
+    \item Sequential C implementation.
+    \item Manual OpenMP implementation.
+    \item Auto-generated OpenMP implementation.
+\end{itemize}
+
+This design allows direct comparison between the baseline, human-written OpenMP, and tool-generated OpenMP.
+
+\section{Evaluation and Results}
+
+\subsection{Experimental Setup}
+
+The evaluation compares sequential, manual OpenMP, and auto-generated OpenMP implementations. The experiments use synthetic Gaussian datasets and the Covertype real-world dataset. The Gaussian workload names were renamed in the paper for readability: \texttt{paper\_2d\_100000} is reported as G2D-100K, and \texttt{paper\_3d\_1000000} is reported as G3D-1M.
+
+All C implementations were compiled with GCC using \texttt{-O2}. OpenMP versions were compiled with \texttt{-fopenmp}. The evaluated thread counts were 1, 2, 4, and 8. Correctness was validated by comparing checksums against the sequential reference.
+
+\subsection{Metrics}
+
+Runtime is measured in seconds. Speedup is calculated as:
+
+\begin{equation}
+S = \frac{T_{seq}}{T_{par}},
+\end{equation}
+
+where $T_{seq}$ is the sequential runtime and $T_{par}$ is the parallel runtime. Efficiency is calculated as:
+
+\begin{equation}
+E = \frac{S}{P},
+\end{equation}
+
+where $P$ is the number of OpenMP threads.
+
+\subsection{K-Means Synthetic Gaussian Results}
+
+Table~\ref{tab:kmeans-gaussian} shows the K-Means auto-generated OpenMP results on Gaussian datasets at 8 threads. The generated OpenMP implementation achieved speedups between 2.68$\times$ and 3.67$\times$, while preserving correctness.
+
+\begin{table}[t]
+\centering
+\caption{K-Means Auto-Generated OpenMP Results on Gaussian Datasets at 8 Threads}
+\label{tab:kmeans-gaussian}
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Workload} & \textbf{K} & \textbf{D} & \textbf{Time (s)} & \textbf{Speedup}\\
+\midrule
+G2D-100K & 8 & 2 & 0.026 & 3.04$\times$\\
+G2D-200K & 8 & 2 & 0.047 & 3.53$\times$\\
+G2D-500K & 8 & 2 & 0.107 & 3.67$\times$\\
+G3D-100K & 4 & 3 & 0.023 & 2.70$\times$\\
+G3D-200K & 4 & 3 & 0.037 & 2.68$\times$\\
+G3D-400K & 4 & 3 & 0.075 & 3.48$\times$\\
+G3D-800K & 4 & 3 & 0.147 & 3.55$\times$\\
+G3D-1M & 4 & 3 & 0.183 & 3.37$\times$\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fig_kmeans_gaussian_auto_speedup.png}
+\caption{Auto-generated K-Means OpenMP speedup across Gaussian workloads at 8 threads.}
+\label{fig:kmeans-gaussian-speedup}
+\end{figure}
+
+The best synthetic K-Means result was obtained on G2D-500K, where runtime decreased to 0.107 seconds and speedup reached 3.67$\times$. The auto-generated implementation was also close to manual OpenMP performance. On G2D-500K, auto OpenMP achieved 3.67$\times$, while manual OpenMP achieved 3.64$\times$.
+
+\subsection{K-Means Real-World Dataset Result}
+
+Table~\ref{tab:kmeans-covtype} shows the K-Means result on the Covertype dataset, using 54 features, 7 clusters, and 30 iterations.
+
+\begin{table}[t]
+\centering
+\caption{K-Means Results on the Covertype Dataset}
+\label{tab:kmeans-covtype}
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Version} & \textbf{Threads} & \textbf{Time (s)} & \textbf{Speedup} & \textbf{Eff.}\\
+\midrule
+Sequential & 1 & 5.732 & 1.00$\times$ & 1.000\\
+Manual OMP & 2 & 3.260 & 1.76$\times$ & 0.879\\
+Manual OMP & 4 & 1.936 & 2.96$\times$ & 0.740\\
+Manual OMP & 8 & 1.407 & 4.07$\times$ & 0.509\\
+Auto OMP & 2 & 3.196 & 1.79$\times$ & 0.897\\
+Auto OMP & 4 & 1.949 & 2.94$\times$ & 0.735\\
+Auto OMP & 8 & 1.311 & 4.37$\times$ & 0.547\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fig_kmeans_covtype_speedup.png}
+\caption{K-Means speedup on the Covertype dataset using manual and auto-generated OpenMP implementations.}
+\label{fig:kmeans-covtype-speedup}
+\end{figure}
+
+On Covertype, the auto-generated OpenMP version reduced runtime from 5.732 seconds to 1.311 seconds at 8 threads, achieving a 4.37$\times$ speedup. All manual and auto OpenMP runs passed checksum validation.
+
+\subsection{Fuzzy C-Means Results}
+
+Fuzzy C-Means is more computationally expensive than K-Means because each point maintains a membership value for every cluster. Table~\ref{tab:fcm-main} shows the results on a 10K-point, 15-cluster, 20-feature Gaussian workload with 30 iterations and fuzziness $m=2.0$.
+
+\begin{table}[t]
+\centering
+\caption{Fuzzy C-Means Manual and Auto OpenMP Results}
+\label{tab:fcm-main}
+\scriptsize
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Version} & \textbf{Threads} & \textbf{Time (s)} & \textbf{Speedup} & \textbf{Eff.}\\
+\midrule
+Sequential & 1 & 20.952 & 1.00$\times$ & 1.000\\
+Manual OMP & 2 & 11.200 & 1.87$\times$ & 0.935\\
+Manual OMP & 4 & 6.427 & 3.26$\times$ & 0.815\\
+Manual OMP & 8 & 4.997 & 4.19$\times$ & 0.524\\
+Auto OMP & 2 & 11.454 & 1.83$\times$ & 0.915\\
+Auto OMP & 4 & 6.482 & 3.23$\times$ & 0.808\\
+Auto OMP & 8 & 4.847 & 4.32$\times$ & 0.540\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fig_fcm_10k_speedup.png}
+\caption{Fuzzy C-Means speedup on the 10K-15C-20F workload using manual and auto-generated OpenMP implementations.}
+\label{fig:fcm-10k-speedup}
+\end{figure}
+
+The auto-generated FCM OpenMP version reduced runtime from 20.952 seconds to 4.847 seconds at 8 threads, achieving a 4.32$\times$ speedup. This result is close to the manual OpenMP implementation, which achieved 4.19$\times$ at 8 threads. Therefore, the generated OpenMP code can match manual parallelization for the supported FCM membership-update pattern.
+
+\subsection{Fuzzy C-Means Schedule and Hyperparameter Sweep}
+
+A larger FCM sweep was conducted using G2D-100K, G2D-200K, and G2D-500K datasets, 8 clusters, iteration counts of 5, 15, and 30, fuzziness values of 1.5, 2.0, and 2.5, and six OpenMP schedules: static, dynamic with chunks 64 and 256, guided with chunks 64 and 256, and auto. The sweep produced 648 auto-generated OpenMP FCM runs and 648 manual OpenMP runs. All OpenMP runs passed checksum validation.
+
+Table~\ref{tab:fcm-schedule} summarizes the 8-thread auto-generated OpenMP FCM results by schedule.
+
+\begin{table}[t]
+\centering
+\caption{FCM Auto OpenMP Schedule Summary at 8 Threads}
+\label{tab:fcm-schedule}
+\scriptsize
+\setlength{\tabcolsep}{3pt}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Schedule} & \textbf{Runs} & \textbf{Med. Time} & \textbf{Med. Speedup} & \textbf{Max}\\
+\midrule
+dynamic\_256 & 27 & 1.896 & 3.77$\times$ & 4.48$\times$\\
+guided\_64 & 27 & 1.920 & 3.65$\times$ & 4.36$\times$\\
+guided\_256 & 27 & 1.931 & 3.62$\times$ & 4.32$\times$\\
+static & 27 & 2.037 & 3.38$\times$ & 4.32$\times$\\
+auto & 27 & 2.179 & 3.47$\times$ & 4.37$\times$\\
+dynamic\_64 & 27 & 2.466 & 3.70$\times$ & 5.12$\times$\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{figures/fig_fcm_schedule_median_speedup.png}
+\caption{Median speedup of auto-generated Fuzzy C-Means OpenMP code across scheduling policies at 8 threads.}
+\label{fig:fcm-schedule-speedup}
+\end{figure}
+
+The lowest median runtime was achieved by dynamic scheduling with chunk size 256. The highest observed speedup was 5.12$\times$ using dynamic scheduling with chunk size 64 on the FCM-G2D-500K-k8-it30-m2.5 workload.
+
+For a representative FCM configuration with fuzziness $m=2.0$ and 30 iterations, the best auto-generated OpenMP results were:
+\begin{itemize}
+    \item G2D-100K: 0.905 s, 3.95$\times$ speedup using dynamic\_256.
+    \item G2D-200K: 1.890 s, 3.68$\times$ speedup using guided\_64.
+    \item G2D-500K: 4.666 s, 3.73$\times$ speedup using dynamic\_256.
+\end{itemize}
+
+\subsection{Discussion}
+
+The results confirm that AutoCluster-OMP can generate correct and efficient OpenMP code for both hard and soft clustering workloads. K-Means achieved strong speedup on both synthetic Gaussian workloads and the real-world Covertype dataset. Fuzzy C-Means achieved higher absolute runtimes but also strong speedups because its membership-update loop performs significantly more computation.
+
+The one-thread OpenMP versions are sometimes slower than the sequential baselines. This is expected because OpenMP introduces runtime overhead even when only one thread is used. However, as the number of threads increases, the generated OpenMP versions show clear runtime reductions.
+
+Efficiency decreases at higher thread counts. This behavior is expected in shared-memory parallel programs because of OpenMP overhead, memory bandwidth limitations, synchronization costs, and remaining sequential sections such as centroid updates and initialization. Nevertheless, the speedup results show that the dominant assignment and membership-update loops are suitable targets for automatic parallelization.
 
 \section{Conclusion and Future Work}
-AutoCluster-OMP demonstrates that a simple pattern-based source-to-source workflow can automate useful OpenMP transformations for clustering kernels. Future work includes Clang AST integration, stronger dependence analysis, safe local-buffer centroid transformations, and GPU backends.
+
+This paper presented AutoCluster-OMP, a lightweight source-to-source OpenMP auto-parallelizer for clustering workloads. The prototype detects K-Means assignment loops and Fuzzy C-Means membership-update loops, generates OpenMP directives, benchmarks the generated code, and validates correctness using checksums. Experimental results show that auto-generated OpenMP code can achieve meaningful speedup while preserving correctness. On Covertype, auto-generated K-Means achieved 4.37$\times$ speedup at 8 threads. On Fuzzy C-Means, the auto-generated implementation achieved 4.32$\times$ speedup on the 10K-15C-20F workload and up to 5.12$\times$ in the schedule sweep.
+
+Future work includes replacing the pattern-based parser with Clang AST analysis, improving automatic centroid-update transformations, adding automatic OpenMP schedule selection, supporting additional clustering algorithms, and extending the generator to OpenACC or CUDA for GPU execution.
 
 \bibliographystyle{IEEEtran}
 \bibliography{references}
+
 \end{document}

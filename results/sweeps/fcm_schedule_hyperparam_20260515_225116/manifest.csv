@@ -1,0 +1,11 @@
+key,value
+created_at,2026-05-16T02:06:06
+algorithm,fuzzy-cmeans
+mode,paper-2d
+threads,"1,2,4,8"
+iterations,"5,15,30"
+repeats,1
+fuzziness_values,"1.5,2,2.5"
+cluster_values,dataset defaults
+schedules,"static,dynamic_64,dynamic_256,guided_64,guided_256,auto"
+datasets,"paper_2d_100000,paper_2d_200000,paper_2d_500000"

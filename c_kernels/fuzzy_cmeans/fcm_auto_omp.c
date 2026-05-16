@@ -127,7 +127,7 @@ double checksum_membership(const double *membership, int n, int k) {
 }
 
 int main(int argc, char **argv) {
-    RuntimeConfig config = {NULL, N_CLUSTERS, N_FEATURES, MAX_ITER, 1, FUZZINESS};
+    RuntimeConfig config = {NULL, NULL, N_CLUSTERS, N_FEATURES, MAX_ITER, 1, FUZZINESS};
     parse_common_args(argc, argv, &config, 1);
 
     int n = N_POINTS;

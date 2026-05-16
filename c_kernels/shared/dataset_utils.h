@@ -7,6 +7,7 @@
 
 typedef struct RuntimeConfig {
     const char *dataset_path;
+    const char *output_labels_path;
     int n_clusters;
     int n_features;
     int max_iter;
@@ -45,6 +46,8 @@ static void parse_common_args(int argc, char **argv, RuntimeConfig *config, int 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--dataset") == 0 && i + 1 < argc) {
             config->dataset_path = argv[++i];
+        } else if (strcmp(argv[i], "--output-labels") == 0 && i + 1 < argc) {
+            config->output_labels_path = argv[++i];
         } else if (strcmp(argv[i], "--clusters") == 0 && i + 1 < argc) {
             config->n_clusters = parse_int_arg(argv[++i], "--clusters");
         } else if (strcmp(argv[i], "--features") == 0 && i + 1 < argc) {
@@ -60,6 +63,21 @@ static void parse_common_args(int argc, char **argv, RuntimeConfig *config, int 
             exit(1);
         }
     }
+}
+
+static int write_int_labels_csv(const char *path, const int *labels, int n) {
+    FILE *handle = fopen(path, "w");
+    if (!handle) {
+        fprintf(stderr, "Failed to open output labels path: %s\n", path);
+        return 0;
+    }
+
+    for (int i = 0; i < n; i++) {
+        fprintf(handle, "%d\n", labels[i]);
+    }
+
+    fclose(handle);
+    return 1;
 }
 
 #endif
