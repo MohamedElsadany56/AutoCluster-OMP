@@ -18,3 +18,4 @@ results/reports/*
 !results/processed/.gitkeep
 !results/figures/.gitkeep
 !results/reports/.gitkeep
+*.png
