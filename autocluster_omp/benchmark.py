@@ -3,11 +3,31 @@ import os
 import re
 import subprocess
 
-from autocluster_omp.benchmark.correctness import correctness_label
-from autocluster_omp.benchmark.metrics import calculate_efficiency, calculate_speedup
-from autocluster_omp.compiler.gcc_runner import compile_c_source
+from autocluster_omp.compiler import compile_c_source
 from autocluster_omp.config import DEFAULT_BUILD_DIR
 from autocluster_omp.models import BenchmarkResult
+
+
+def checksums_match(reference: float | None, candidate: float | None, tolerance: float = 1e-6) -> bool:
+    if reference is None or candidate is None:
+        return False
+    return abs(reference - candidate) <= tolerance
+
+
+def correctness_label(reference: float | None, candidate: float | None, tolerance: float = 1e-6) -> str:
+    return "pass" if checksums_match(reference, candidate, tolerance) else "fail"
+
+
+def calculate_speedup(sequential_time: float, parallel_time: float) -> float:
+    if parallel_time <= 0:
+        return 0.0
+    return sequential_time / parallel_time
+
+
+def calculate_efficiency(speedup: float, threads: int) -> float:
+    if threads <= 0:
+        return 0.0
+    return speedup / threads
 
 
 def parse_program_output(output: str) -> dict[str, float]:
@@ -187,3 +207,77 @@ def benchmark_sources(
                 )
             )
     return results
+
+
+# Backwards-compatibility aliases for code that imported submodules
+import sys as _sys
+_this_mod = _sys.modules[__name__]
+runner = _this_mod
+correctness = _this_mod
+metrics = _this_mod
+schedule_experiment = _this_mod
+workload_experiment = _this_mod
+
+
+def run_schedule_experiment(
+    algorithm: str,
+    sequential: str,
+    auto: str,
+    manual: str,
+    threads: list[int],
+    schedules: list[dict],
+    defines: dict | None = None,
+) -> list:
+    results = []
+    for schedule in schedules:
+        results.extend(
+            benchmark_sources(
+                algorithm=algorithm,
+                sequential=sequential,
+                auto=auto,
+                manual=manual,
+                threads=threads,
+                schedule=schedule["name"],
+                workload_name="schedule_comparison",
+                defines=defines,
+            )
+        )
+    return results
+
+
+def load_workload_config(path: str | Path) -> dict:
+    import json
+
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def defines_from_config(config: dict) -> dict[str, int | float]:
+    defines: dict[str, int | float] = {
+        "N_POINTS": config["n_points"],
+        "N_CLUSTERS": config["n_clusters"],
+        "N_FEATURES": config["n_features"],
+        "MAX_ITER": config["iterations"],
+    }
+    if "fuzziness" in config:
+        defines["FUZZINESS"] = config["fuzziness"]
+    return defines
+
+
+def run_workload_experiment(
+    config_path: str | Path,
+    algorithm: str,
+    sequential: str,
+    auto: str,
+    manual: str,
+) -> list:
+    config = load_workload_config(config_path)
+    return benchmark_sources(
+        algorithm=algorithm,
+        sequential=sequential,
+        auto=auto,
+        manual=manual,
+        threads=config["threads"],
+        schedule=config.get("schedule", "static"),
+        workload_name=config["name"],
+        defines=defines_from_config(config),
+    )

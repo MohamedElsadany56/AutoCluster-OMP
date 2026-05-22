@@ -8,17 +8,12 @@ import pandas as pd
 from rich.console import Console
 from rich.table import Table
 
-from autocluster_omp.analyzer.workload_estimator import make_workload
-from autocluster_omp.benchmark.runner import benchmark_sources
-from autocluster_omp.benchmark.workload_experiment import defines_from_config, load_workload_config
+from autocluster_omp.analyzer import make_workload
+from autocluster_omp.benchmark import benchmark_sources, defines_from_config, load_workload_config
 from autocluster_omp.config import PROJECT_ROOT, SUPPORTED_ALGORITHMS
-from autocluster_omp.generator.code_writer import write_code
-from autocluster_omp.generator.openmp_generator import analyze_source, generate_from_file
-from autocluster_omp.plotting.plot_efficiency import plot_efficiency
-from autocluster_omp.plotting.plot_runtime import plot_runtime
-from autocluster_omp.plotting.plot_speedup import plot_speedup
-from autocluster_omp.reports.csv_report import export_csv
-from autocluster_omp.reports.json_report import export_analysis_json
+from autocluster_omp.generator import write_code, analyze_source, generate_from_file
+from autocluster_omp.plotting import plot_efficiency, plot_runtime, plot_speedup
+from autocluster_omp.reports import export_csv, export_analysis_json
 
 
 console = Console()

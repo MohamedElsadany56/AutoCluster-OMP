@@ -1,4 +1,4 @@
-from autocluster_omp.analyzer.workload_estimator import estimate_workload
+from autocluster_omp.analyzer import estimate_workload
 from autocluster_omp.models import WorkloadConfig
 
 

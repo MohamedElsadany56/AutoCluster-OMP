@@ -1,5 +1,4 @@
-from autocluster_omp.analyzer.loop_detector import detect_for_loops
-from autocluster_omp.analyzer.pattern_classifier import classify_loop
+from autocluster_omp.analyzer import detect_for_loops, classify_loop
 
 
 def test_classifier_detects_kmeans_assignment_loop():

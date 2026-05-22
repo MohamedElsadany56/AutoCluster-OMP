@@ -1,4 +1,4 @@
-from autocluster_omp.benchmark.correctness import checksums_match, correctness_label
+from autocluster_omp.benchmark import checksums_match, correctness_label
 
 
 def test_correctness_passes_identical_checksums():

@@ -1,4 +1,4 @@
-from autocluster_omp.analyzer.loop_detector import detect_for_loops
+from autocluster_omp.analyzer import detect_for_loops
 
 
 def test_loop_detector_detects_loops():

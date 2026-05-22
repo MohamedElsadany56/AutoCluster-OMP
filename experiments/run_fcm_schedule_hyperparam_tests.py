@@ -16,9 +16,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from autocluster_omp.benchmark.runner import benchmark_sources
-from autocluster_omp.generator.openmp_generator import generate_from_file
-from autocluster_omp.reports.csv_report import export_csv
+from autocluster_omp.benchmark import benchmark_sources
+from autocluster_omp.generator import generate_from_file
+from autocluster_omp.reports import export_csv
 
 
 @dataclass(frozen=True)

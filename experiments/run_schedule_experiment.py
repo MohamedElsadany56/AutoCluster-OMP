@@ -1,9 +1,8 @@
 from pathlib import Path
 
-from autocluster_omp.benchmark.schedule_experiment import run_schedule_experiment
-from autocluster_omp.benchmark.workload_experiment import defines_from_config, load_workload_config
+from autocluster_omp.benchmark import run_schedule_experiment, defines_from_config, load_workload_config
 from autocluster_omp.config import PROJECT_ROOT
-from autocluster_omp.reports.csv_report import export_csv
+from autocluster_omp.reports import export_csv
 
 
 if __name__ == "__main__":

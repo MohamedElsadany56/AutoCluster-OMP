@@ -1,5 +1,4 @@
-from autocluster_omp.generator.openmp_generator import generate_openmp_source
-from autocluster_omp.generator.pragma_builder import build_parallel_for_pragma
+from autocluster_omp.generator import generate_openmp_source, build_parallel_for_pragma
 
 
 def test_pragma_builder_generates_schedules():
